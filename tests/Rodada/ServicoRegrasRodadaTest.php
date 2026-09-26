@@ -134,4 +134,44 @@ final class ServicoRegrasRodadaTest extends TestCase
         // 1 vaga; entre os que pagaram, menor ordem = jogador 3 (ordem 4).
         $this->assertEquals([new AcaoPromover(3)], $this->servico()->decidir($estado, $agora));
     }
+
+    public function test_listas_de_linha_e_goleiro_sao_independentes(): void
+    {
+        $agora = new DateTimeImmutable('2026-01-07 10:00');
+        $estado = new EstadoRodada(
+            new DateTimeImmutable('2026-01-07 12:00'),
+            new DateTimeImmutable('2026-01-08 16:00'),
+            limiteLinha: 1,   // linha cheia
+            limiteGoleiro: 1, // goleiro com vaga
+            inscricoes: [
+                new Inscricao(1, Tipo::Linha, StatusInscricao::Confirmado, 1),
+                new Inscricao(2, Tipo::Linha, StatusInscricao::Espera, 2),
+                new Inscricao(3, Tipo::Goleiro, StatusInscricao::Espera, 1),
+            ],
+        );
+
+        // Linha cheia -> jogador 2 não sobe. Goleiro com vaga -> promove jogador 3.
+        $this->assertEquals([new AcaoPromover(3)], $this->servico()->decidir($estado, $agora));
+    }
+
+    public function test_promove_em_ambos_os_tipos_linha_antes_de_goleiro(): void
+    {
+        $agora = new DateTimeImmutable('2026-01-07 10:00');
+        $estado = new EstadoRodada(
+            new DateTimeImmutable('2026-01-07 12:00'),
+            new DateTimeImmutable('2026-01-08 16:00'),
+            limiteLinha: 1,
+            limiteGoleiro: 1,
+            inscricoes: [
+                new Inscricao(1, Tipo::Linha, StatusInscricao::Espera, 1),
+                new Inscricao(2, Tipo::Goleiro, StatusInscricao::Espera, 1),
+            ],
+        );
+
+        // Uma vaga em cada tipo; resultado traz linha primeiro, depois goleiro.
+        $this->assertEquals(
+            [new AcaoPromover(1), new AcaoPromover(2)],
+            $this->servico()->decidir($estado, $agora),
+        );
+    }
 }

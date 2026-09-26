@@ -11,7 +11,14 @@ final class ServicoRegrasRodada
     /** @return list<Acao> */
     public function decidir(EstadoRodada $estado, DateTimeImmutable $agora): array
     {
-        return $this->promocoes($estado, Tipo::Linha, $agora);
+        $acoes = [];
+        foreach ([Tipo::Linha, Tipo::Goleiro] as $tipo) {
+            foreach ($this->promocoes($estado, $tipo, $agora) as $acao) {
+                $acoes[] = $acao;
+            }
+        }
+
+        return $acoes;
     }
 
     /** @return list<AcaoPromover> */
