@@ -53,12 +53,19 @@ final class RepositorioPagamentoPdo
             }
 
             $busca = $this->pdo->prepare(
-                'SELECT pelada_id, jogador_id, categoria, escopo, valor FROM pagamentos WHERE id = ?'
+                'SELECT pelada_id, jogador_id, categoria, escopo, valor, criado_em FROM pagamentos WHERE id = ?'
             );
             $busca->execute([$pagamentoId]);
             $p = $busca->fetch(PDO::FETCH_ASSOC);
 
+            // Data econômica do pagamento = quando o jogador pagou (registro), não a
+            // hora em que o organizador validou. É ela que datar o caixa e definir o
+            // ano da festa, para os dois relatórios reconciliarem e não recobrar quem
+            // pagou na virada do ano.
+            $pagoEm = new DateTimeImmutable($p['criado_em']);
+
             // Entrada de caixa vinculada (UNIQUE(pagamento_id) impede dupla contagem).
+            // ocorrido_em = data do pagamento; criado_em = quando este movimento foi gravado.
             $this->pdo->prepare(
                 "INSERT INTO movimentos_caixa
                     (pelada_id, tipo, categoria, valor, descricao, pagamento_id, ocorrido_em, criado_em)
@@ -67,14 +74,14 @@ final class RepositorioPagamentoPdo
                 (int) $p['pelada_id'],
                 (float) $p['valor'],
                 $pagamentoId,
-                $agora->format('Y-m-d H:i:s'),
+                $pagoEm->format('Y-m-d H:i:s'),
                 $agora->format('Y-m-d H:i:s'),
             ]);
 
-            // Quitar a festa do ano marca o jogador (usa o ano de $agora).
+            // Quitar a festa do ano marca o jogador com o ano em que ele pagou.
             if ($p['categoria'] === 'festa' && $p['escopo'] === 'ano') {
                 $this->pdo->prepare('UPDATE jogadores SET festa_quitada_ano = ? WHERE id = ?')
-                    ->execute([(int) $agora->format('Y'), (int) $p['jogador_id']]);
+                    ->execute([(int) $pagoEm->format('Y'), (int) $p['jogador_id']]);
             }
 
             $this->pdo->commit();

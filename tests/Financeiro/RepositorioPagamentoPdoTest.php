@@ -101,7 +101,22 @@ final class RepositorioPagamentoPdoTest extends TestCase
         $this->assertSame('pagamento', $mov['categoria']);
         $this->assertSame(15.0, (float) $mov['valor']);
         $this->assertSame(1, (int) $mov['pelada_id']);
-        $this->assertSame('2026-01-06 09:00:00', $mov['ocorrido_em']);
+        // ocorrido_em = data econômica do pagamento (registro), não a hora da confirmação.
+        $this->assertSame('2026-01-05 10:00:00', $mov['ocorrido_em']);
+    }
+
+    public function test_confirmar_usa_data_do_pagamento_como_ocorrido_no_caixa(): void
+    {
+        $repo = $this->repo();
+        $id = $repo->registrar(
+            new Pagamento(1, 10, CategoriaPagamento::Futebol, EscopoPagamento::Semana, 15.00, FormaPagamento::Pix),
+            new DateTimeImmutable('2026-01-31 10:00:00'),
+        );
+
+        $repo->confirmar($id, new DateTimeImmutable('2026-02-01 09:00:00')); // confirmado no mês seguinte
+
+        $mov = $this->pdo->query('SELECT ocorrido_em FROM movimentos_caixa WHERE pagamento_id = ' . $id)->fetch(PDO::FETCH_ASSOC);
+        $this->assertSame('2026-01-31 10:00:00', $mov['ocorrido_em']); // data econômica = registro do pagamento
     }
 
     public function test_registrar_nao_mexe_no_caixa(): void
@@ -150,6 +165,20 @@ final class RepositorioPagamentoPdoTest extends TestCase
 
         $ano = $this->pdo->query('SELECT festa_quitada_ano FROM jogadores WHERE id = 10')->fetchColumn();
         $this->assertSame(2026, (int) $ano);
+    }
+
+    public function test_confirmar_festa_ano_marca_o_ano_do_pagamento_nao_da_confirmacao(): void
+    {
+        $repo = $this->repo();
+        $id = $repo->registrar(
+            new Pagamento(1, 10, CategoriaPagamento::Festa, EscopoPagamento::Ano, 220.00, FormaPagamento::Dinheiro),
+            new DateTimeImmutable('2026-11-28 10:00:00'), // pago na temporada 2026
+        );
+
+        $repo->confirmar($id, new DateTimeImmutable('2027-01-03 09:00:00')); // organizador valida só em jan/2027
+
+        $ano = $this->pdo->query('SELECT festa_quitada_ano FROM jogadores WHERE id = 10')->fetchColumn();
+        $this->assertSame(2026, (int) $ano); // ano do pagamento, não da confirmação
     }
 
     public function test_confirmar_festa_semana_nao_marca(): void
