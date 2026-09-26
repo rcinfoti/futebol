@@ -35,4 +35,21 @@ final class SchemaSqliteTest extends TestCase
             $this->assertContains($c, $nomes, "faltou a coluna inscricoes.{$c}");
         }
     }
+
+    public function test_movimentos_caixa_existe_com_colunas(): void
+    {
+        $pdo = new PDO('sqlite::memory:');
+        SchemaSqlite::criar($pdo);
+
+        $tabelas = $pdo->query(
+            "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name"
+        )->fetchAll(PDO::FETCH_COLUMN);
+        $this->assertContains('movimentos_caixa', $tabelas, 'faltou a tabela movimentos_caixa');
+
+        $colunas = $pdo->query('PRAGMA table_info(movimentos_caixa)')->fetchAll(PDO::FETCH_ASSOC);
+        $nomes = array_column($colunas, 'name');
+        foreach (['pelada_id', 'tipo', 'categoria', 'valor', 'descricao', 'pagamento_id', 'ocorrido_em', 'criado_em'] as $c) {
+            $this->assertContains($c, $nomes, "faltou a coluna movimentos_caixa.{$c}");
+        }
+    }
 }

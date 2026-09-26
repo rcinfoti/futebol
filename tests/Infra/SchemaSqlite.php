@@ -84,5 +84,17 @@ final class SchemaSqlite
             confirmado INTEGER NOT NULL DEFAULT 0,
             criado_em TEXT NOT NULL
         )");
+
+        $pdo->exec("CREATE TABLE movimentos_caixa (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            pelada_id INTEGER NOT NULL,
+            tipo TEXT NOT NULL,
+            categoria TEXT NOT NULL,
+            valor REAL NOT NULL,
+            descricao TEXT,
+            pagamento_id INTEGER UNIQUE,
+            ocorrido_em TEXT NOT NULL,
+            criado_em TEXT NOT NULL
+        )");
     }
 }
