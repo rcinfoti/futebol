@@ -13,6 +13,14 @@ jobs:
       - name: Baixar o codigo
         uses: actions/checkout@v4
 
+      - name: Preparar PHP + Composer
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.1'
+
+      - name: Instalar dependencias de producao (gera vendor/ p/ o autoloader)
+        run: composer install --no-dev --optimize-autoloader --no-interaction --prefer-dist
+
       - name: Enviar por SSH (rsync) para o HostGator
         uses: easingthemes/ssh-deploy@v5.1.0
         with:
@@ -21,13 +29,14 @@ jobs:
           REMOTE_USER: ${{ secrets.SSH_USER }}
           REMOTE_PORT: ${{ secrets.SSH_PORT }}   # HostGator revenda geralmente usa 2222
           # Pasta de destino no servidor (com barra no final).
-          # Ajuste "futebol" para a pasta que voce quer dentro de public_html.
+          # O document root do dominio/subdominio deve apontar para .../futebol/public
           TARGET: /home1/rcinfoti/public_html/futebol/
-          # Envia o conteudo da raiz do repositorio:
+          # Envia o conteudo da raiz do repositorio (inclui vendor/ gerado acima):
           SOURCE: "./"
           # -r recursivo, -z comprime, -v verboso. SEM --delete por seguranca:
           # so adiciona/atualiza arquivos, nunca apaga nada no servidor.
           # (religar --delete so quando o repo espelhar 100% o site)
           ARGS: "-rltgoDzvO"
-          # Coisas que NAO devem ir para o servidor:
-          EXCLUDE: ".git/, .github/, docs/, .superpowers/, .env, config.local.php, README.md, .gitignore, uploads/"
+          # Coisas que NAO devem ir para o servidor.
+          # ATENCAO: vendor/ NAO esta aqui de proposito — ele precisa ser enviado.
+          EXCLUDE: ".git/, .github/, docs/, .superpowers/, tests/, .env, config.local.php, README.md, .gitignore, uploads/, .phpunit.cache/, phpunit.xml, .DS_Store"

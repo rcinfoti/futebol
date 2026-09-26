@@ -1,6 +1,6 @@
 // Service worker mínimo (spec §8): páginas em network-first (dados sempre frescos
 // quando há rede, com cache de leitura como reserva offline); demais GETs cache-first.
-const CACHE = 'pelada-v1';
+const CACHE = 'pelada-v2';
 
 self.addEventListener('install', (event) => {
   self.skipWaiting();
@@ -26,8 +26,11 @@ self.addEventListener('fetch', (event) => {
     event.respondWith(
       fetch(req)
         .then((resp) => {
-          const copia = resp.clone();
-          caches.open(CACHE).then((c) => c.put(req, copia));
+          // só guarda página boa (sem erro/redirect de outro domínio) como reserva offline
+          if (resp.ok && resp.type === 'basic') {
+            const copia = resp.clone();
+            caches.open(CACHE).then((c) => c.put(req, copia));
+          }
           return resp;
         })
         .catch(() => caches.match(req))
@@ -39,8 +42,10 @@ self.addEventListener('fetch', (event) => {
     caches.match(req).then((cacheada) =>
       cacheada ||
       fetch(req).then((resp) => {
-        const copia = resp.clone();
-        caches.open(CACHE).then((c) => c.put(req, copia));
+        if (resp.ok) {
+          const copia = resp.clone();
+          caches.open(CACHE).then((c) => c.put(req, copia));
+        }
         return resp;
       })
     )

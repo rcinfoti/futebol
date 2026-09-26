@@ -102,4 +102,34 @@ final class ServicoPresencaTest extends TestCase
         $this->assertNull($i['desistiu_em']);
         $this->assertSame(1, (int) $this->pdo->query('SELECT COUNT(*) FROM inscricoes WHERE rodada_id = 5 AND jogador_id = 10')->fetchColumn());
     }
+
+    public function test_quem_desiste_e_volta_vai_pro_fim_da_fila(): void
+    {
+        // limite de linha = 1: Ana confirmada, Bia na espera
+        $this->pdo->exec("INSERT INTO jogadores (id, pelada_id, nome, tipo) VALUES (13, 1, 'Duda', 'linha')");
+        $s = $this->servico();
+        $s->confirmar(5, 10, new DateTimeImmutable('2026-01-05 10:00:00')); // Ana: confirmada, ordem 1
+        $s->confirmar(5, 11, new DateTimeImmutable('2026-01-05 10:05:00')); // Bia: espera, ordem 2
+        $s->confirmar(5, 13, new DateTimeImmutable('2026-01-05 10:10:00')); // Duda: espera, ordem 3
+
+        // Bia sai da espera e volta: não pode manter a ordem 2 e passar na frente da Duda
+        $s->desistir(5, 11, new DateTimeImmutable('2026-01-05 11:00:00'));
+        $s->confirmar(5, 11, new DateTimeImmutable('2026-01-05 11:05:00'));
+
+        $this->assertSame('espera', $this->inscricao(11)['status']);
+        $this->assertGreaterThan((int) $this->inscricao(13)['ordem'], (int) $this->inscricao(11)['ordem']);
+    }
+
+    public function test_desistir_da_espera_sai_da_fila_sem_virar_desistencia(): void
+    {
+        // Spec §3.3: multa é pra CONFIRMADO que desiste. Quem só estava na espera nunca teve vaga.
+        $s = $this->servico();
+        $s->confirmar(5, 10, new DateTimeImmutable('2026-01-05 10:00:00')); // confirmada
+        $s->confirmar(5, 11, new DateTimeImmutable('2026-01-05 10:05:00')); // espera
+
+        $s->desistir(5, 11, new DateTimeImmutable('2026-01-08 17:00:00')); // depois do prazo da multa
+
+        $this->assertSame([], $this->inscricao(11)); // saiu da fila
+        $this->assertSame('confirmado', $this->inscricao(10)['status']);
+    }
 }

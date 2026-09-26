@@ -7,6 +7,7 @@ namespace RcInfoti\Pelada\Painel;
 use DateTimeImmutable;
 use PDO;
 use RcInfoti\Pelada\Financeiro\CalculadoraDevido;
+use RcInfoti\Pelada\Financeiro\TemporadaFesta;
 use RcInfoti\Pelada\Rodada\Tipo;
 
 final class ConsultaPainelJogador
@@ -15,20 +16,64 @@ final class ConsultaPainelJogador
     {
     }
 
-    /** @return list<array{id:int,nome:string}> jogadores ativos para o seletor de login */
-    public function jogadoresParaLogin(): array
+    /** @return list<array{id:int,nome:string}> jogadores ativos da pelada, para o seletor de login */
+    public function jogadoresParaLogin(int $peladaId): array
     {
-        $rows = $this->pdo->query(
+        $stmt = $this->pdo->prepare(
             "SELECT j.id, j.nome FROM jogadores j
              JOIN peladas p ON p.id = j.pelada_id
-             WHERE j.ativo = 1 AND p.ativa = 1
+             WHERE j.pelada_id = ? AND j.ativo = 1 AND p.ativa = 1
              ORDER BY j.nome"
-        )->fetchAll(PDO::FETCH_ASSOC);
+        );
+        $stmt->execute([$peladaId]);
 
         return array_map(
             static fn (array $r): array => ['id' => (int) $r['id'], 'nome' => (string) $r['nome']],
-            $rows,
+            $stmt->fetchAll(PDO::FETCH_ASSOC),
         );
+    }
+
+    /** @return array{id:int,nome:string,slug:string}|null */
+    public function peladaPorSlug(string $slug): ?array
+    {
+        $stmt = $this->pdo->prepare('SELECT id, nome, slug FROM peladas WHERE slug = ? AND ativa = 1');
+        $stmt->execute([$slug]);
+        $r = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        return $r === false ? null : self::pelada($r);
+    }
+
+    /** @return list<array{id:int,nome:string,slug:string}> */
+    public function peladasAtivas(): array
+    {
+        $rows = $this->pdo->query('SELECT id, nome, slug FROM peladas WHERE ativa = 1 ORDER BY nome')
+            ->fetchAll(PDO::FETCH_ASSOC);
+
+        return array_map(static fn (array $r): array => self::pelada($r), $rows);
+    }
+
+    public function pertenceAPelada(int $jogadorId, int $peladaId): bool
+    {
+        $stmt = $this->pdo->prepare('SELECT 1 FROM jogadores WHERE id = ? AND pelada_id = ? AND ativo = 1');
+        $stmt->execute([$jogadorId, $peladaId]);
+
+        return $stmt->fetchColumn() !== false;
+    }
+
+    /** Slug da pelada do jogador (para voltar ao login certo ao sair). */
+    public function slugDoJogador(int $jogadorId): ?string
+    {
+        $stmt = $this->pdo->prepare('SELECT p.slug FROM jogadores j JOIN peladas p ON p.id = j.pelada_id WHERE j.id = ?');
+        $stmt->execute([$jogadorId]);
+        $slug = $stmt->fetchColumn();
+
+        return $slug === false ? null : (string) $slug;
+    }
+
+    /** @param array<string,mixed> $r @return array{id:int,nome:string,slug:string} */
+    private static function pelada(array $r): array
+    {
+        return ['id' => (int) $r['id'], 'nome' => (string) $r['nome'], 'slug' => (string) $r['slug']];
     }
 
     public function peladaId(int $jogadorId): int
@@ -42,7 +87,7 @@ final class ConsultaPainelJogador
     public function montar(int $jogadorId, DateTimeImmutable $agora): PainelJogador
     {
         $jog = $this->pdo->prepare(
-            'SELECT j.nome, j.tipo, j.saldo_pendente, j.festa_quitada_ano, j.pelada_id,
+            'SELECT j.nome, j.tipo, j.saldo_pendente, j.festa_quitada_ano, j.pelada_id, p.festa_inicio, p.festa_fim,
                     p.valor_futebol, p.valor_festa_semana
              FROM jogadores j JOIN peladas p ON p.id = j.pelada_id
              WHERE j.id = ?'
@@ -75,6 +120,9 @@ final class ConsultaPainelJogador
 
         $anoJogo = $dataJogo !== null ? (int) (new DateTimeImmutable($dataJogo))->format('Y') : (int) $agora->format('Y');
         $festaQuitada = $j['festa_quitada_ano'] !== null && (int) $j['festa_quitada_ano'] === $anoJogo;
+        // fora da temporada (ex.: dezembro) a festa semanal não é cobrada — spec §3.2
+        $diaJogo = new DateTimeImmutable($dataJogo ?? $agora->format('Y-m-d'));
+        $semFesta = $festaQuitada || !TemporadaFesta::deColunas($j['festa_inicio'], $j['festa_fim'])->cobra($diaJogo);
 
         $calc = new CalculadoraDevido((float) $j['valor_futebol'], (float) $j['valor_festa_semana']);
         $tipo = $j['tipo'] === 'goleiro' ? Tipo::Goleiro : Tipo::Linha;
@@ -85,7 +133,7 @@ final class ConsultaPainelJogador
             $rodadaId,
             $dataJogo,
             $situacao,
-            $calc->devidoSemanal($tipo, $festaQuitada),
+            $calc->devidoSemanal($tipo, $semFesta),
             (float) $j['saldo_pendente'],
         );
     }

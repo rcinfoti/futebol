@@ -140,4 +140,42 @@ final class RepositorioRodadaPdoTest extends TestCase
         $valor = $this->pdo->query('SELECT valor FROM multas WHERE jogador_id = 12')->fetchColumn();
         $this->assertSame(5.0, (float) $valor); // goleiro paga só a festa da semana
     }
+
+    public function test_multa_de_quem_ja_pagou_nasce_paga_e_nao_vira_pendencia(): void
+    {
+        // Spec §3.3.5: o valor pago não é devolvido; pendência só pra quem NÃO pagou.
+        $this->inscrever(10, 'linha', 'desistiu', 1);
+        $this->pdo->exec("INSERT INTO pagamentos (pelada_id, jogador_id, rodada_id, categoria, escopo, valor, forma, confirmado, criado_em)
+            VALUES (1, 10, 5, 'futebol', 'semana', 20, 'pix', 1, '2026-01-06 10:00:00')");
+
+        $this->repo()->aplicarMulta(5, 10, new DateTimeImmutable('2026-01-08 17:00:00'));
+
+        $m = $this->pdo->query('SELECT status, quitado_em, email_enviado FROM multas WHERE jogador_id = 10')->fetch(PDO::FETCH_ASSOC);
+        $this->assertSame('paga', $m['status']);
+        $this->assertSame('2026-01-08 17:00:00', $m['quitado_em']);
+        $this->assertSame(0, (int) $m['email_enviado']); // o aviso por e-mail continua saindo
+        $this->assertSame(0.0, (float) $this->pdo->query('SELECT saldo_pendente FROM jogadores WHERE id = 10')->fetchColumn());
+    }
+
+    public function test_pagamento_so_avisado_nao_livra_da_pendencia(): void
+    {
+        $this->inscrever(10, 'linha', 'desistiu', 1);
+        $this->pdo->exec("INSERT INTO pagamentos (pelada_id, jogador_id, rodada_id, categoria, escopo, valor, forma, confirmado, criado_em)
+            VALUES (1, 10, 5, 'futebol', 'semana', 20, 'pix', 0, '2026-01-06 10:00:00')");
+
+        $this->repo()->aplicarMulta(5, 10, new DateTimeImmutable('2026-01-08 17:00:00'));
+
+        $this->assertSame('pendente', $this->pdo->query('SELECT status FROM multas WHERE jogador_id = 10')->fetchColumn());
+        $this->assertSame(20.0, (float) $this->pdo->query('SELECT saldo_pendente FROM jogadores WHERE id = 10')->fetchColumn());
+    }
+
+    public function test_multa_em_dezembro_nao_inclui_festa(): void
+    {
+        $this->pdo->exec("UPDATE rodadas SET data_jogo = '2026-12-10' WHERE id = 5");
+        $this->inscrever(10, 'linha', 'desistiu', 1);
+
+        $this->repo()->aplicarMulta(5, 10, new DateTimeImmutable('2026-12-10 17:00:00'));
+
+        $this->assertSame(15.0, (float) $this->pdo->query('SELECT valor FROM multas WHERE jogador_id = 10')->fetchColumn());
+    }
 }

@@ -37,6 +37,47 @@ final class RepositorioCaixaPdo
         return (int) $this->pdo->lastInsertId();
     }
 
+    /** Entrada avulsa (saldo inicial, doação, ajuste) — sem pagamento de origem. */
+    public function lancarEntrada(
+        int $peladaId,
+        float $valor,
+        string $categoria,
+        string $descricao,
+        DateTimeImmutable $ocorridoEm,
+        DateTimeImmutable $agora,
+    ): int {
+        $this->pdo->prepare(
+            "INSERT INTO movimentos_caixa
+                (pelada_id, tipo, categoria, valor, descricao, pagamento_id, ocorrido_em, criado_em)
+             VALUES (?, 'entrada', ?, ?, ?, NULL, ?, ?)"
+        )->execute([
+            $peladaId,
+            $categoria,
+            $valor,
+            $descricao,
+            $ocorridoEm->format('Y-m-d H:i:s'),
+            $agora->format('Y-m-d H:i:s'),
+        ]);
+
+        return (int) $this->pdo->lastInsertId();
+    }
+
+    /**
+     * Apaga um lançamento feito à mão (gasto ou entrada avulsa) digitado errado.
+     * Entradas que nascem de pagamento confirmado ou de multa recebida NÃO são apagáveis
+     * aqui: elas têm origem própria e apagar só o caixa deixaria os registros incoerentes.
+     */
+    public function excluirManual(int $peladaId, int $movimentoId): bool
+    {
+        $stmt = $this->pdo->prepare(
+            "DELETE FROM movimentos_caixa
+             WHERE id = ? AND pelada_id = ? AND pagamento_id IS NULL AND categoria NOT IN ('pagamento', 'multa')"
+        );
+        $stmt->execute([$movimentoId, $peladaId]);
+
+        return $stmt->rowCount() > 0;
+    }
+
     public function saldo(int $peladaId): float
     {
         $stmt = $this->pdo->prepare(

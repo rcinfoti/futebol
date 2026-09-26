@@ -6,6 +6,7 @@ namespace RcInfoti\Pelada\Rodada;
 
 use DateTimeImmutable;
 use RcInfoti\Pelada\Multa\NotificadorMulta;
+use RcInfoti\Pelada\Presenca\NotificadorPromocao;
 
 final class CicloRodada
 {
@@ -13,6 +14,7 @@ final class CicloRodada
         private readonly RepositorioCicloRodadaPdo $ciclo,
         private readonly ProcessadorRodada $processador,
         private readonly NotificadorMulta $notificador,
+        private readonly ?NotificadorPromocao $promocoes = null,
     ) {
     }
 
@@ -25,6 +27,7 @@ final class CicloRodada
         }
 
         $this->notificador->notificarPendentes($peladaId, $agora);
+        $this->promocoes?->notificarPendentes($peladaId);
         $this->ciclo->fecharRodadasVencidas($peladaId, $agora);
     }
 }

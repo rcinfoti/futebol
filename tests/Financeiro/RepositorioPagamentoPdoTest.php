@@ -194,4 +194,15 @@ final class RepositorioPagamentoPdoTest extends TestCase
         $ano = $this->pdo->query('SELECT festa_quitada_ano FROM jogadores WHERE id = 10')->fetchColumn();
         $this->assertNull($ano);
     }
+
+    public function test_entrada_de_caixa_descreve_o_pagamento(): void
+    {
+        $repo = new RepositorioPagamentoPdo($this->pdo);
+        $id = $repo->registrar(new \RcInfoti\Pelada\Financeiro\Pagamento(1, 10, \RcInfoti\Pelada\Financeiro\CategoriaPagamento::Festa,
+            \RcInfoti\Pelada\Financeiro\EscopoPagamento::Ano, 220.0, \RcInfoti\Pelada\Financeiro\FormaPagamento::Pix), new \DateTimeImmutable('2026-01-06 10:00:00'));
+        $repo->confirmar($id, new \DateTimeImmutable('2026-01-06 11:00:00'));
+
+        $nome = $this->pdo->query('SELECT nome FROM jogadores WHERE id = 10')->fetchColumn();
+        $this->assertSame("Festa (ano) — {$nome}", $this->pdo->query('SELECT descricao FROM movimentos_caixa')->fetchColumn());
+    }
 }

@@ -53,7 +53,8 @@ final class RepositorioPagamentoPdo
             }
 
             $busca = $this->pdo->prepare(
-                'SELECT pelada_id, jogador_id, categoria, escopo, valor, criado_em FROM pagamentos WHERE id = ?'
+                'SELECT p.pelada_id, p.jogador_id, p.categoria, p.escopo, p.valor, p.criado_em, j.nome
+                 FROM pagamentos p JOIN jogadores j ON j.id = p.jogador_id WHERE p.id = ?'
             );
             $busca->execute([$pagamentoId]);
             $p = $busca->fetch(PDO::FETCH_ASSOC);
@@ -69,10 +70,12 @@ final class RepositorioPagamentoPdo
             $this->pdo->prepare(
                 "INSERT INTO movimentos_caixa
                     (pelada_id, tipo, categoria, valor, descricao, pagamento_id, ocorrido_em, criado_em)
-                 VALUES (?, 'entrada', 'pagamento', ?, NULL, ?, ?, ?)"
+                 VALUES (?, 'entrada', 'pagamento', ?, ?, ?, ?, ?)"
             )->execute([
                 (int) $p['pelada_id'],
                 (float) $p['valor'],
+                // extrato legível: "Futebol — Ana", "Festa (ano) — Bia"
+                ($p['categoria'] === 'festa' ? ($p['escopo'] === 'ano' ? 'Festa (ano)' : 'Festa') : 'Futebol') . ' — ' . $p['nome'],
                 $pagamentoId,
                 $pagoEm->format('Y-m-d H:i:s'),
                 $agora->format('Y-m-d H:i:s'),
@@ -89,6 +92,16 @@ final class RepositorioPagamentoPdo
             $this->pdo->rollBack();
             throw $e;
         }
+    }
+
+    /** Nome do comprovante de um pagamento da pelada; null se não existe, é de outra pelada ou não tem. */
+    public function comprovanteDe(int $peladaId, int $pagamentoId): ?string
+    {
+        $stmt = $this->pdo->prepare('SELECT comprovante_arquivo FROM pagamentos WHERE id = ? AND pelada_id = ?');
+        $stmt->execute([$pagamentoId, $peladaId]);
+        $nome = $stmt->fetchColumn();
+
+        return is_string($nome) && $nome !== '' ? $nome : null;
     }
 
     private function categoriaSql(CategoriaPagamento $c): string

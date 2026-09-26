@@ -14,6 +14,7 @@ date_default_timezone_set('America/Sao_Paulo');
 use RcInfoti\Pelada\Email\EnviadorEmailMail;
 use RcInfoti\Pelada\Infra\Database;
 use RcInfoti\Pelada\Multa\NotificadorMulta;
+use RcInfoti\Pelada\Presenca\NotificadorPromocao;
 use RcInfoti\Pelada\Rodada\AgendaPelada;
 use RcInfoti\Pelada\Rodada\CalendarioRodada;
 use RcInfoti\Pelada\Rodada\CicloRodada;
@@ -28,10 +29,12 @@ $config = require __DIR__ . '/../config/config.local.php';
 $pdo = Database::fromConfig($config['db'])->pdo();
 $agora = new DateTimeImmutable('now');
 
+$email = new EnviadorEmailMail($config['email_de']);
 $ciclo = new CicloRodada(
     new RepositorioCicloRodadaPdo($pdo, new CalendarioRodada()),
     new ProcessadorRodada(new RepositorioRodadaPdo($pdo), new ServicoRegrasRodada()),
-    new NotificadorMulta($pdo, new EnviadorEmailMail($config['email_de'])),
+    new NotificadorMulta($pdo, $email),
+    new NotificadorPromocao($pdo, $email), // spec §6: "abriu vaga, você está confirmado"
 );
 
 $peladas = $pdo->query('SELECT * FROM peladas WHERE ativa = 1')->fetchAll(PDO::FETCH_ASSOC);

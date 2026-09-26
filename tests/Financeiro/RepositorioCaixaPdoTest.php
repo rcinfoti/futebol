@@ -59,7 +59,8 @@ final class RepositorioCaixaPdoTest extends TestCase
 
     private function confirmarPagamento(float $valor, DateTimeImmutable $quando): void
     {
-        $this->pdo->exec("INSERT INTO jogadores (pelada_id, nome, tipo) VALUES (1, 'Ana', 'linha')");
+        // nome único por pelada (migration 005): cada chamada cria um jogador distinto
+        $this->pdo->prepare("INSERT INTO jogadores (pelada_id, nome, tipo) VALUES (1, ?, 'linha')")->execute(['Ana ' . uniqid()]);
         $jogadorId = (int) $this->pdo->lastInsertId();
 
         $pag = new RepositorioPagamentoPdo($this->pdo);
@@ -141,5 +142,33 @@ final class RepositorioCaixaPdoTest extends TestCase
         $this->assertSame(TipoMovimento::Entrada, $extrato[0]->tipo);
         $this->assertSame('pagamento', $extrato[0]->categoria);
         $this->assertNotNull($extrato[0]->pagamentoId);
+    }
+
+    public function test_lancar_entrada_avulsa(): void
+    {
+        $repo = new RepositorioCaixaPdo($this->pdo);
+        $repo->lancarEntrada(1, 150.0, 'ajuste', 'Saldo inicial', new DateTimeImmutable('2026-01-01 00:00:00'), new DateTimeImmutable('2026-01-02 10:00:00'));
+
+        $this->assertSame(150.0, $repo->saldo(1));
+    }
+
+    public function test_excluir_manual_so_gasto_ou_ajuste_da_pelada(): void
+    {
+        $repo = new RepositorioCaixaPdo($this->pdo);
+        $t = new DateTimeImmutable('2026-01-08 21:00:00');
+        $gasto = $repo->lancarSaida(1, 30.0, 'campo', 'Aluguel', $t, $t);
+        $ajuste = $repo->lancarEntrada(1, 10.0, 'ajuste', 'Doação', $t, $t);
+        $this->confirmarPagamento(20.0, $t); // entrada vinculada a pagamento
+        $this->pdo->exec("INSERT INTO movimentos_caixa (pelada_id, tipo, categoria, valor, ocorrido_em, criado_em) VALUES (1, 'entrada', 'multa', 15, '2026-01-08', '2026-01-08')");
+        $multa = (int) $this->pdo->lastInsertId();
+        $pagto = (int) $this->pdo->query('SELECT id FROM movimentos_caixa WHERE pagamento_id IS NOT NULL')->fetchColumn();
+
+        $this->assertFalse($repo->excluirManual(2, $gasto));   // outra pelada
+        $this->assertFalse($repo->excluirManual(1, $pagto));   // nasce do pagamento: não se apaga na mão
+        $this->assertFalse($repo->excluirManual(1, $multa));   // nasce da multa recebida
+        $this->assertTrue($repo->excluirManual(1, $gasto));
+        $this->assertTrue($repo->excluirManual(1, $ajuste));
+
+        $this->assertSame(35.0, $repo->saldo(1)); // 20 do pagamento + 15 da multa
     }
 }

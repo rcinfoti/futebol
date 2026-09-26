@@ -7,6 +7,7 @@ namespace RcInfoti\Pelada\Rodada;
 use DateTimeImmutable;
 use PDO;
 use RcInfoti\Pelada\Financeiro\CalculadoraDevido;
+use RcInfoti\Pelada\Financeiro\TemporadaFesta;
 
 final class RepositorioRodadaPdo implements RepositorioRodada
 {
@@ -64,16 +65,17 @@ final class RepositorioRodadaPdo implements RepositorioRodada
     public function promover(int $rodadaId, int $jogadorId, DateTimeImmutable $agora): void
     {
         $stmt = $this->pdo->prepare(
-            "UPDATE inscricoes SET status = 'confirmado', confirmado_em = ?
+            "UPDATE inscricoes SET status = 'confirmado', confirmado_em = ?, promovido_em = ?, promocao_notificada = 0
              WHERE rodada_id = ? AND jogador_id = ?"
         );
-        $stmt->execute([$agora->format('Y-m-d H:i:s'), $rodadaId, $jogadorId]);
+        $quando = $agora->format('Y-m-d H:i:s');
+        $stmt->execute([$quando, $quando, $rodadaId, $jogadorId]); // promovido_em → e-mail "abriu vaga" (cron)
     }
 
     public function aplicarMulta(int $rodadaId, int $jogadorId, DateTimeImmutable $agora): void
     {
         $dados = $this->pdo->prepare(
-            'SELECT r.pelada_id, r.data_jogo, p.valor_futebol, p.valor_festa_semana,
+            'SELECT r.pelada_id, r.data_jogo, p.valor_futebol, p.valor_festa_semana, p.festa_inicio, p.festa_fim,
                     j.tipo, j.festa_quitada_ano
              FROM rodadas r
              JOIN peladas p ON p.id = r.pelada_id
@@ -88,9 +90,11 @@ final class RepositorioRodadaPdo implements RepositorioRodada
 
         $anoJogo = (int) (new DateTimeImmutable($d['data_jogo']))->format('Y');
         $festaQuitada = $d['festa_quitada_ano'] !== null && (int) $d['festa_quitada_ano'] === $anoJogo;
+        $semFesta = $festaQuitada
+            || !TemporadaFesta::deColunas($d['festa_inicio'], $d['festa_fim'])->cobra(new DateTimeImmutable($d['data_jogo']));
 
         $calc = new CalculadoraDevido((float) $d['valor_futebol'], (float) $d['valor_festa_semana']);
-        $valor = $calc->devidoSemanal($this->tipo($d['tipo']), $festaQuitada);
+        $valor = $calc->devidoSemanal($this->tipo($d['tipo']), $semFesta);
 
         $this->pdo->beginTransaction();
         try {
@@ -108,20 +112,35 @@ final class RepositorioRodadaPdo implements RepositorioRodada
                 return;
             }
 
+            // Spec §3.3.5: quem já pagou a rodada (pagamento CONFIRMADO) não recebe o
+            // dinheiro de volta e não fica devendo — a multa nasce quitada pelo próprio
+            // pagamento. Só quem não pagou ganha pendência. O e-mail sai nos dois casos.
+            $pag = $this->pdo->prepare(
+                'SELECT 1 FROM pagamentos WHERE rodada_id = ? AND jogador_id = ? AND confirmado = 1'
+            );
+            $pag->execute([$rodadaId, $jogadorId]);
+            $jaPagou = $pag->fetchColumn() !== false;
+            $quando = $agora->format('Y-m-d H:i:s');
+
             $insere = $this->pdo->prepare(
-                "INSERT INTO multas (pelada_id, jogador_id, rodada_id, valor, status, motivo, criado_em)
-                 VALUES (?, ?, ?, ?, 'pendente', 'desistência após prazo', ?)"
+                "INSERT INTO multas (pelada_id, jogador_id, rodada_id, valor, status, motivo, criado_em, quitado_em)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
             );
             $insere->execute([
                 (int) $d['pelada_id'],
                 $jogadorId,
                 $rodadaId,
                 $valor,
-                $agora->format('Y-m-d H:i:s'),
+                $jaPagou ? 'paga' : 'pendente',
+                $jaPagou ? 'desistência após prazo (coberta pelo pagamento da rodada)' : 'desistência após prazo',
+                $quando,
+                $jaPagou ? $quando : null,
             ]);
 
-            $this->pdo->prepare('UPDATE jogadores SET saldo_pendente = saldo_pendente + ? WHERE id = ?')
-                ->execute([$valor, $jogadorId]);
+            if (!$jaPagou) {
+                $this->pdo->prepare('UPDATE jogadores SET saldo_pendente = saldo_pendente + ? WHERE id = ?')
+                    ->execute([$valor, $jogadorId]);
+            }
 
             $this->pdo->commit();
         } catch (\Throwable $e) {

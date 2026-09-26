@@ -17,6 +17,7 @@ final class ServicoPresenca
     {
         $this->pdo->beginTransaction();
         try {
+            $this->travarRodada($rodadaId);
             $ctx = $this->contexto($rodadaId, $jogadorId);
             $atual = $this->statusAtual($rodadaId, $jogadorId);
 
@@ -28,17 +29,16 @@ final class ServicoPresenca
 
             $status = $this->temVaga($rodadaId, $ctx['tipo'], $ctx['limite']) ? 'confirmado' : 'espera';
             $quando = $agora->format('Y-m-d H:i:s');
+            // Ordem de chegada: quem volta depois de desistir entra no fim da fila,
+            // senão furaria a espera com a ordem antiga.
+            $ordem = $this->proximaOrdem($rodadaId);
 
             if ($atual === 'desistiu') {
                 $this->pdo->prepare(
-                    'UPDATE inscricoes SET status = ?, confirmado_em = ?, desistiu_em = NULL
+                    'UPDATE inscricoes SET status = ?, ordem = ?, confirmado_em = ?, desistiu_em = NULL, promovido_em = NULL, promocao_notificada = 0
                      WHERE rodada_id = ? AND jogador_id = ?'
-                )->execute([$status, $quando, $rodadaId, $jogadorId]);
+                )->execute([$status, $ordem, $quando, $rodadaId, $jogadorId]);
             } else {
-                $ordem = (int) $this->pdo->query(
-                    'SELECT COALESCE(MAX(ordem), 0) + 1 FROM inscricoes WHERE rodada_id = ' . $rodadaId
-                )->fetchColumn();
-
                 $this->pdo->prepare(
                     'INSERT INTO inscricoes (rodada_id, jogador_id, tipo, status, ordem, confirmado_em)
                      VALUES (?, ?, ?, ?, ?, ?)'
@@ -54,10 +54,39 @@ final class ServicoPresenca
 
     public function desistir(int $rodadaId, int $jogadorId, DateTimeImmutable $agora): void
     {
+        // Quem estava só na espera nunca teve vaga: sai da fila, sem virar "desistência"
+        // (spec §3.3 — multa é para confirmado que desiste). Se voltar, entra no fim da fila.
+        if ($this->statusAtual($rodadaId, $jogadorId) === 'espera') {
+            $this->pdo->prepare("DELETE FROM inscricoes WHERE rodada_id = ? AND jogador_id = ? AND status = 'espera'")
+                ->execute([$rodadaId, $jogadorId]);
+
+            return;
+        }
+
         $this->pdo->prepare(
             "UPDATE inscricoes SET status = 'desistiu', desistiu_em = ?
-             WHERE rodada_id = ? AND jogador_id = ?"
+             WHERE rodada_id = ? AND jogador_id = ? AND status = 'confirmado'"
         )->execute([$agora->format('Y-m-d H:i:s'), $rodadaId, $jogadorId]);
+    }
+
+    /**
+     * Serializa confirmações concorrentes da mesma rodada (MySQL/InnoDB): sem isso,
+     * duas requisições simultâneas contam a mesma vaga livre e estouram o limite.
+     * No SQLite (testes) a transação já é serializada pelo lock do arquivo.
+     */
+    private function travarRodada(int $rodadaId): void
+    {
+        if ($this->pdo->getAttribute(PDO::ATTR_DRIVER_NAME) === 'mysql') {
+            $this->pdo->prepare('SELECT id FROM rodadas WHERE id = ? FOR UPDATE')->execute([$rodadaId]);
+        }
+    }
+
+    private function proximaOrdem(int $rodadaId): int
+    {
+        $stmt = $this->pdo->prepare('SELECT COALESCE(MAX(ordem), 0) + 1 FROM inscricoes WHERE rodada_id = ?');
+        $stmt->execute([$rodadaId]);
+
+        return (int) $stmt->fetchColumn();
     }
 
     /** @return array{tipo:string,limite:int} */

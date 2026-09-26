@@ -27,12 +27,12 @@ final class NotificadorMultaTest extends TestCase
             (11, 1, 'Bia', NULL, 'linha')");
     }
 
-    private function inserirMulta(int $id, int $jogadorId, float $valor): void
+    private function inserirMulta(int $id, int $jogadorId, float $valor, string $status = 'pendente'): void
     {
         $this->pdo->prepare(
             "INSERT INTO multas (id, pelada_id, jogador_id, rodada_id, valor, status, criado_em)
-             VALUES (?, 1, ?, 5, ?, 'pendente', '2026-01-08 16:00:00')"
-        )->execute([$id, $jogadorId, $valor]);
+             VALUES (?, 1, ?, 5, ?, ?, '2026-01-08 16:00:00')"
+        )->execute([$id, $jogadorId, $valor, $status]);
     }
 
     public function test_envia_email_e_marca_enviado(): void
@@ -73,5 +73,25 @@ final class NotificadorMultaTest extends TestCase
         $this->assertCount(0, $fake->enviados);
         // permanece 0 para ser tentada quando o e-mail for cadastrado
         $this->assertSame(0, (int) $this->pdo->query('SELECT email_enviado FROM multas WHERE id = 101')->fetchColumn());
+    }
+
+    public function test_multa_cancelada_nao_gera_email(): void
+    {
+        $this->inserirMulta(100, 10, 20.00, 'cancelada');
+        $fake = new EnviadorEmailFake();
+
+        $this->assertSame(0, (new NotificadorMulta($this->pdo, $fake))->notificarPendentes(1, new DateTimeImmutable('2026-01-08 16:05:00')));
+        $this->assertSame([], $fake->enviados);
+    }
+
+    public function test_multa_coberta_pelo_pagamento_avisa_que_nao_ha_nada_a_pagar(): void
+    {
+        $this->inserirMulta(100, 10, 20.00, 'paga');
+        $fake = new EnviadorEmailFake();
+
+        (new NotificadorMulta($this->pdo, $fake))->notificarPendentes(1, new DateTimeImmutable('2026-01-08 16:05:00'));
+
+        $this->assertStringContainsString('não será devolvido', $fake->enviados[0]['corpo']);
+        $this->assertStringNotContainsString('pendência', $fake->enviados[0]['corpo']);
     }
 }

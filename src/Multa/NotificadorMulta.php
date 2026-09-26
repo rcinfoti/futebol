@@ -19,11 +19,11 @@ final class NotificadorMulta
     public function notificarPendentes(int $peladaId, DateTimeImmutable $agora): int
     {
         $sel = $this->pdo->prepare(
-            'SELECT m.id, m.valor, j.nome, j.email
+            "SELECT m.id, m.valor, m.status, j.nome, j.email
              FROM multas m
              JOIN jogadores j ON j.id = m.jogador_id
-             WHERE m.pelada_id = ? AND m.email_enviado = 0
-             ORDER BY m.id'
+             WHERE m.pelada_id = ? AND m.email_enviado = 0 AND m.status <> 'cancelada'
+             ORDER BY m.id"
         );
         $sel->execute([$peladaId]);
 
@@ -36,7 +36,7 @@ final class NotificadorMulta
                 continue; // sem e-mail: tenta em outra passada, quando for cadastrado
             }
 
-            $this->email->enviar($para, 'Multa da pelada', $this->corpo((string) $m['nome'], (float) $m['valor']));
+            $this->email->enviar($para, 'Multa da pelada', $this->corpo((string) $m['nome'], (float) $m['valor'], $m['status'] === 'paga'));
             $marca->execute([(int) $m['id']]);
             $enviados++;
         }
@@ -44,13 +44,17 @@ final class NotificadorMulta
         return $enviados;
     }
 
-    private function corpo(string $nome, float $valor): string
+    private function corpo(string $nome, float $valor, bool $cobertaPeloPagamento): string
     {
+        $situacao = $cobertaPeloPagamento
+            ? 'Como você já tinha pago a rodada, não há nada a pagar — mas o valor pago não será devolvido.'
+            : 'O valor entra como pendência no seu cadastro até a quitação.';
+
         return sprintf(
-            "Olá %s,\n\nFoi registrada uma multa de R$ %.2f por desistência após o prazo. "
-            . "O valor entra como pendência no seu cadastro até a quitação.\n\nAbraço.",
+            "Olá %s,\n\nFoi registrada uma multa de R$ %.2f por desistência após o prazo. %s\n\nAbraço.",
             $nome,
             $valor,
+            $situacao,
         );
     }
 }
