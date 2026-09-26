@@ -39,8 +39,13 @@ final class ServicoRegrasRodada
 
         usort($espera, static fn (Inscricao $a, Inscricao $b): int => $a->ordem <=> $b->ordem);
 
+        $antesDaVirada = $agora < $estado->viraRegraEm;
+        $candidatos = $antesDaVirada
+            ? $espera
+            : array_values(array_filter($espera, static fn (Inscricao $i): bool => $i->pagou));
+
         $acoes = [];
-        foreach (array_slice($espera, 0, $vagas) as $inscricao) {
+        foreach (array_slice($candidatos, 0, $vagas) as $inscricao) {
             $acoes[] = new AcaoPromover($inscricao->jogadorId);
         }
 
