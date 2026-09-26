@@ -22,7 +22,7 @@ jobs:
           REMOTE_PORT: ${{ secrets.SSH_PORT }}   # HostGator revenda geralmente usa 2222
           # Pasta de destino no servidor (com barra no final).
           # Ajuste "futebol" para a pasta que voce quer dentro de public_html.
-          TARGET: /home/rcinfoti/public_html/futebol/
+          TARGET: /home1/rcinfoti/public_html/futebol/
           # Envia o conteudo da raiz do repositorio:
           SOURCE: "./"
           # -r recursivo, -z comprime, -v verboso. SEM --delete por seguranca:
