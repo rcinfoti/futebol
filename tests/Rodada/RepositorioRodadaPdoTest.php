@@ -113,6 +113,22 @@ final class RepositorioRodadaPdoTest extends TestCase
         $this->assertSame('1', (string) $flag);
     }
 
+    public function test_aplicar_multa_e_idempotente(): void
+    {
+        $this->inscrever(10, 'linha', 'desistiu', 1);
+
+        // Duas aplicações (ex.: cron e página processando a mesma rodada) não podem
+        // gerar multa nem cobrança em duplicidade.
+        $this->repo()->aplicarMulta(5, 10, new DateTimeImmutable('2026-01-08 17:00:00'));
+        $this->repo()->aplicarMulta(5, 10, new DateTimeImmutable('2026-01-08 17:05:00'));
+
+        $qtd = (int) $this->pdo->query('SELECT COUNT(*) FROM multas WHERE jogador_id = 10')->fetchColumn();
+        $this->assertSame(1, $qtd);
+
+        $saldo = $this->pdo->query('SELECT saldo_pendente FROM jogadores WHERE id = 10')->fetchColumn();
+        $this->assertSame(20.0, (float) $saldo);
+    }
+
     public function test_multa_ignora_festa_quitada_de_outro_ano(): void
     {
         // Cadu (goleiro) quitou a festa em 2025, mas a rodada é de 2026 -> festa ainda devida (5).

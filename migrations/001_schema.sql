@@ -82,6 +82,7 @@ CREATE TABLE multas (
     motivo VARCHAR(255) NULL,
     criado_em DATETIME NOT NULL,
     quitado_em DATETIME NULL,
+    UNIQUE KEY uk_multa (rodada_id, jogador_id),
     KEY idx_multas_jogador (jogador_id),
     CONSTRAINT fk_multas_pelada FOREIGN KEY (pelada_id) REFERENCES peladas(id),
     CONSTRAINT fk_multas_jogador FOREIGN KEY (jogador_id) REFERENCES jogadores(id),

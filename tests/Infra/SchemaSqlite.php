@@ -67,7 +67,8 @@ final class SchemaSqlite
             status TEXT NOT NULL DEFAULT 'pendente',
             motivo TEXT,
             criado_em TEXT NOT NULL,
-            quitado_em TEXT
+            quitado_em TEXT,
+            UNIQUE (rodada_id, jogador_id)
         )");
 
         $pdo->exec("CREATE TABLE pagamentos (

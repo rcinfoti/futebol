@@ -94,6 +94,20 @@ final class RepositorioRodadaPdo implements RepositorioRodada
 
         $this->pdo->beginTransaction();
         try {
+            // Reivindica a multa de forma atômica: o UPDATE guardado trava a linha e só
+            // "vence" se ainda não fora aplicada. Se nada foi afetado (outra execução do
+            // cron/página já aplicou, ou a inscrição não existe), é um no-op idempotente.
+            $marca = $this->pdo->prepare(
+                'UPDATE inscricoes SET multa_aplicada = 1
+                 WHERE rodada_id = ? AND jogador_id = ? AND multa_aplicada = 0'
+            );
+            $marca->execute([$rodadaId, $jogadorId]);
+            if ($marca->rowCount() === 0) {
+                $this->pdo->commit();
+
+                return;
+            }
+
             $insere = $this->pdo->prepare(
                 "INSERT INTO multas (pelada_id, jogador_id, rodada_id, valor, status, motivo, criado_em)
                  VALUES (?, ?, ?, ?, 'pendente', 'desistência após prazo', ?)"
@@ -108,9 +122,6 @@ final class RepositorioRodadaPdo implements RepositorioRodada
 
             $this->pdo->prepare('UPDATE jogadores SET saldo_pendente = saldo_pendente + ? WHERE id = ?')
                 ->execute([$valor, $jogadorId]);
-
-            $this->pdo->prepare('UPDATE inscricoes SET multa_aplicada = 1 WHERE rodada_id = ? AND jogador_id = ?')
-                ->execute([$rodadaId, $jogadorId]);
 
             $this->pdo->commit();
         } catch (\Throwable $e) {
