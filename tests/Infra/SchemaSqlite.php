@@ -42,7 +42,8 @@ final class SchemaSqlite
             status TEXT NOT NULL DEFAULT 'aberta',
             abre_em TEXT,
             vira_regra_em TEXT NOT NULL,
-            prazo_multa_em TEXT NOT NULL
+            prazo_multa_em TEXT NOT NULL,
+            UNIQUE (pelada_id, data_jogo)
         )");
 
         $pdo->exec("CREATE TABLE inscricoes (
@@ -68,6 +69,7 @@ final class SchemaSqlite
             motivo TEXT,
             criado_em TEXT NOT NULL,
             quitado_em TEXT,
+            email_enviado INTEGER NOT NULL DEFAULT 0,
             UNIQUE (rodada_id, jogador_id)
         )");
 
