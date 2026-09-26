@@ -1,0 +1,22 @@
+# Ponte para rodar o app numa subpasta do dominio (ex.: www.rcinfoti.com.br/futebol),
+# quando o document root e' public_html e NAO da' pra apontar direto para public/.
+# Tudo entra pelo front controller em public/index.php; so' arquivos reais que existem
+# dentro de public/ (sw.js, manifest, icones, css) sao servidos direto. Assim config/,
+# src/, vendor/, migrations/ e uploads/ ficam inacessiveis por URL (caem no roteador => 404).
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteBase /futebol/
+
+    # Ja' aponta para public/: nao reescreve (evita loop na reescrita interna).
+    RewriteRule ^public/ - [L]
+
+    # Arquivo real dentro de public/ => serve de public/.
+    RewriteCond %{DOCUMENT_ROOT}/futebol/public/$1 -f
+    RewriteRule ^(.+)$ public/$1 [L]
+
+    # Qualquer outra coisa (inclusive a raiz) => front controller.
+    RewriteRule ^ public/index.php [L]
+</IfModule>
+
+# Sem listagem de diretorio em nenhum caso.
+Options -Indexes
