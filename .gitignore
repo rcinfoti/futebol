@@ -4,3 +4,4 @@ config.local.php
 /uploads/
 *.log
 .DS_Store
+/.phpunit.cache/
