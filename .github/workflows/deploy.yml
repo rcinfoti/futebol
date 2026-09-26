@@ -1,0 +1,33 @@
+name: Deploy para HostGator (SSH)
+
+# Publica automaticamente sempre que houver push na branch main
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:   # permite disparar manualmente pelo site do GitHub tambem
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Baixar o codigo
+        uses: actions/checkout@v4
+
+      - name: Enviar por SSH (rsync) para o HostGator
+        uses: easingthemes/ssh-deploy@v5.1.0
+        with:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          REMOTE_HOST: ${{ secrets.SSH_HOST }}
+          REMOTE_USER: ${{ secrets.SSH_USER }}
+          REMOTE_PORT: ${{ secrets.SSH_PORT }}   # HostGator revenda geralmente usa 2222
+          # Pasta de destino no servidor (com barra no final).
+          # Ajuste "futebol" para a pasta que voce quer dentro de public_html.
+          TARGET: /home/rcinfoti/public_html/futebol/
+          # Envia o conteudo da raiz do repositorio:
+          SOURCE: "./"
+          # -r recursivo, -z comprime, -v verboso. SEM --delete por seguranca:
+          # so adiciona/atualiza arquivos, nunca apaga nada no servidor.
+          # (religar --delete so quando o repo espelhar 100% o site)
+          ARGS: "-rltgoDzvO"
+          # Coisas que NAO devem ir para o servidor:
+          EXCLUDE: ".git/, .github/, docs/, .superpowers/, .env, config.local.php, README.md, .gitignore, uploads/"
