@@ -11,4 +11,6 @@ return [
         'usuario' => 'rcinfoti_pelada',
         'senha' => '',
     ],
+    // Remetente dos e-mails de multa disparados pelo cron (cron/processar.php).
+    'email_de' => 'pelada@rcinfoti.com.br',
 ];

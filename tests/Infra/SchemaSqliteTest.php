@@ -52,4 +52,28 @@ final class SchemaSqliteTest extends TestCase
             $this->assertContains($c, $nomes, "faltou a coluna movimentos_caixa.{$c}");
         }
     }
+
+    public function test_multas_tem_flag_email_enviado(): void
+    {
+        $pdo = new PDO('sqlite::memory:');
+        SchemaSqlite::criar($pdo);
+
+        $colunas = $pdo->query('PRAGMA table_info(multas)')->fetchAll(PDO::FETCH_ASSOC);
+        $nomes = array_column($colunas, 'name');
+        $this->assertContains('email_enviado', $nomes, 'faltou multas.email_enviado');
+    }
+
+    public function test_rodadas_nao_aceita_data_jogo_duplicada_por_pelada(): void
+    {
+        $pdo = new PDO('sqlite::memory:');
+        $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+        SchemaSqlite::criar($pdo);
+
+        $pdo->exec("INSERT INTO rodadas (pelada_id, data_jogo, status, vira_regra_em, prazo_multa_em)
+            VALUES (1, '2026-01-08', 'aberta', '2026-01-07 12:00:00', '2026-01-08 16:00:00')");
+
+        $this->expectException(\PDOException::class);
+        $pdo->exec("INSERT INTO rodadas (pelada_id, data_jogo, status, vira_regra_em, prazo_multa_em)
+            VALUES (1, '2026-01-08', 'aberta', '2026-01-07 12:00:00', '2026-01-08 16:00:00')");
+    }
 }
