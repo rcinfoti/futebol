@@ -82,4 +82,87 @@ final class RepositorioPagamentoPdoTest extends TestCase
         $this->assertNull($row['rodada_id']);
         $this->assertNull($row['comprovante_arquivo']);
     }
+
+    public function test_confirmar_gera_entrada_no_caixa_vinculada(): void
+    {
+        $repo = $this->repo();
+        $id = $repo->registrar(
+            new Pagamento(1, 10, CategoriaPagamento::Futebol, EscopoPagamento::Semana, 15.00, FormaPagamento::Pix),
+            new DateTimeImmutable('2026-01-05 10:00:00'),
+        );
+
+        $repo->confirmar($id, new DateTimeImmutable('2026-01-06 09:00:00'));
+
+        $pg = $this->pdo->query('SELECT confirmado FROM pagamentos WHERE id = ' . $id)->fetch(PDO::FETCH_ASSOC);
+        $this->assertSame(1, (int) $pg['confirmado']);
+
+        $mov = $this->pdo->query('SELECT * FROM movimentos_caixa WHERE pagamento_id = ' . $id)->fetch(PDO::FETCH_ASSOC);
+        $this->assertSame('entrada', $mov['tipo']);
+        $this->assertSame('pagamento', $mov['categoria']);
+        $this->assertSame(15.0, (float) $mov['valor']);
+        $this->assertSame(1, (int) $mov['pelada_id']);
+        $this->assertSame('2026-01-06 09:00:00', $mov['ocorrido_em']);
+    }
+
+    public function test_registrar_nao_mexe_no_caixa(): void
+    {
+        $this->repo()->registrar(
+            new Pagamento(1, 10, CategoriaPagamento::Futebol, EscopoPagamento::Semana, 15.00, FormaPagamento::Pix),
+            new DateTimeImmutable('2026-01-05 10:00:00'),
+        );
+
+        $qtd = (int) $this->pdo->query('SELECT COUNT(*) FROM movimentos_caixa')->fetchColumn();
+        $this->assertSame(0, $qtd);
+    }
+
+    public function test_confirmar_e_idempotente(): void
+    {
+        $repo = $this->repo();
+        $id = $repo->registrar(
+            new Pagamento(1, 10, CategoriaPagamento::Futebol, EscopoPagamento::Semana, 15.00, FormaPagamento::Pix),
+            new DateTimeImmutable('2026-01-05 10:00:00'),
+        );
+
+        $repo->confirmar($id, new DateTimeImmutable('2026-01-06 09:00:00'));
+        $repo->confirmar($id, new DateTimeImmutable('2026-01-06 09:05:00')); // segunda vez: no-op
+
+        $qtd = (int) $this->pdo->query('SELECT COUNT(*) FROM movimentos_caixa WHERE pagamento_id = ' . $id)->fetchColumn();
+        $this->assertSame(1, $qtd); // apenas uma entrada
+    }
+
+    public function test_confirmar_pagamento_inexistente_e_noop(): void
+    {
+        $this->repo()->confirmar(999, new DateTimeImmutable('2026-01-06 09:00:00'));
+
+        $qtd = (int) $this->pdo->query('SELECT COUNT(*) FROM movimentos_caixa')->fetchColumn();
+        $this->assertSame(0, $qtd);
+    }
+
+    public function test_confirmar_festa_ano_marca_festa_quitada(): void
+    {
+        $repo = $this->repo();
+        $id = $repo->registrar(
+            new Pagamento(1, 10, CategoriaPagamento::Festa, EscopoPagamento::Ano, 220.00, FormaPagamento::Dinheiro),
+            new DateTimeImmutable('2026-02-01 10:00:00'),
+        );
+
+        $repo->confirmar($id, new DateTimeImmutable('2026-02-02 09:00:00'));
+
+        $ano = $this->pdo->query('SELECT festa_quitada_ano FROM jogadores WHERE id = 10')->fetchColumn();
+        $this->assertSame(2026, (int) $ano);
+    }
+
+    public function test_confirmar_festa_semana_nao_marca(): void
+    {
+        $repo = $this->repo();
+        $id = $repo->registrar(
+            new Pagamento(1, 10, CategoriaPagamento::Festa, EscopoPagamento::Semana, 5.00, FormaPagamento::Pix),
+            new DateTimeImmutable('2026-02-01 10:00:00'),
+        );
+
+        $repo->confirmar($id, new DateTimeImmutable('2026-02-02 09:00:00'));
+
+        $ano = $this->pdo->query('SELECT festa_quitada_ano FROM jogadores WHERE id = 10')->fetchColumn();
+        $this->assertNull($ano);
+    }
 }

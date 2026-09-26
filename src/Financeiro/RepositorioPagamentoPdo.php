@@ -35,6 +35,55 @@ final class RepositorioPagamentoPdo
         return (int) $this->pdo->lastInsertId();
     }
 
+    public function confirmar(int $pagamentoId, DateTimeImmutable $agora): void
+    {
+        $this->pdo->beginTransaction();
+        try {
+            // Reivindica o pagamento de forma atômica: o UPDATE guardado trava a
+            // linha e só "vence" se ainda não fora confirmado. Sem linhas afetadas
+            // (já confirmado ou inexistente) => no-op idempotente.
+            $marca = $this->pdo->prepare(
+                'UPDATE pagamentos SET confirmado = 1 WHERE id = ? AND confirmado = 0'
+            );
+            $marca->execute([$pagamentoId]);
+            if ($marca->rowCount() === 0) {
+                $this->pdo->commit();
+
+                return;
+            }
+
+            $busca = $this->pdo->prepare(
+                'SELECT pelada_id, jogador_id, categoria, escopo, valor FROM pagamentos WHERE id = ?'
+            );
+            $busca->execute([$pagamentoId]);
+            $p = $busca->fetch(PDO::FETCH_ASSOC);
+
+            // Entrada de caixa vinculada (UNIQUE(pagamento_id) impede dupla contagem).
+            $this->pdo->prepare(
+                "INSERT INTO movimentos_caixa
+                    (pelada_id, tipo, categoria, valor, descricao, pagamento_id, ocorrido_em, criado_em)
+                 VALUES (?, 'entrada', 'pagamento', ?, NULL, ?, ?, ?)"
+            )->execute([
+                (int) $p['pelada_id'],
+                (float) $p['valor'],
+                $pagamentoId,
+                $agora->format('Y-m-d H:i:s'),
+                $agora->format('Y-m-d H:i:s'),
+            ]);
+
+            // Quitar a festa do ano marca o jogador (usa o ano de $agora).
+            if ($p['categoria'] === 'festa' && $p['escopo'] === 'ano') {
+                $this->pdo->prepare('UPDATE jogadores SET festa_quitada_ano = ? WHERE id = ?')
+                    ->execute([(int) $agora->format('Y'), (int) $p['jogador_id']]);
+            }
+
+            $this->pdo->commit();
+        } catch (\Throwable $e) {
+            $this->pdo->rollBack();
+            throw $e;
+        }
+    }
+
     private function categoriaSql(CategoriaPagamento $c): string
     {
         return match ($c) {
