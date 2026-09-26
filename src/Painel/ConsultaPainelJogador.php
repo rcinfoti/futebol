@@ -15,6 +15,14 @@ final class ConsultaPainelJogador
     {
     }
 
+    public function peladaId(int $jogadorId): int
+    {
+        $stmt = $this->pdo->prepare('SELECT pelada_id FROM jogadores WHERE id = ?');
+        $stmt->execute([$jogadorId]);
+
+        return (int) $stmt->fetchColumn();
+    }
+
     public function montar(int $jogadorId, DateTimeImmutable $agora): PainelJogador
     {
         $jog = $this->pdo->prepare(
