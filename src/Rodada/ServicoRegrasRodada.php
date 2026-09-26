@@ -47,6 +47,12 @@ final class ServicoRegrasRodada
     /** @return list<AcaoPromover> */
     private function promocoes(EstadoRodada $estado, Tipo $tipo, DateTimeImmutable $agora): array
     {
+        // Spec §3.3: promoções só ocorrem até o prazo da multa; depois disso a vaga
+        // fica aberta aguardando (jogo iminente).
+        if ($agora >= $estado->prazoMultaEm) {
+            return [];
+        }
+
         $limite = $tipo === Tipo::Linha ? $estado->limiteLinha : $estado->limiteGoleiro;
 
         $confirmados = 0;

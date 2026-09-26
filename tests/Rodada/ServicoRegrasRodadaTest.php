@@ -136,6 +136,27 @@ final class ServicoRegrasRodadaTest extends TestCase
         $this->assertEquals([new AcaoPromover(3)], $this->servico()->decidir($estado, $agora));
     }
 
+    public function test_nao_promove_apos_o_prazo_da_multa(): void
+    {
+        // Spec §3.3: após quinta 16:00 (prazoMultaEm) a vaga fica aberta aguardando;
+        // não há mais promoção (jogo iminente).
+        $agora = new DateTimeImmutable('2026-01-08 17:00'); // após o prazo
+        $estado = new EstadoRodada(
+            new DateTimeImmutable('2026-01-07 12:00'),
+            prazoMultaEm: new DateTimeImmutable('2026-01-08 16:00'),
+            limiteLinha: 2,
+            limiteGoleiro: 1,
+            inscricoes: [
+                new Inscricao(1, Tipo::Linha, StatusInscricao::Confirmado, 1),
+                new Inscricao(2, Tipo::Linha, StatusInscricao::Espera, 2, pagou: true),
+            ],
+        );
+
+        // Há vaga (limite 2, 1 confirmado) e um pagante na espera, mas o prazo passou:
+        // a vaga fica aberta, ninguém sobe.
+        $this->assertSame([], $this->servico()->decidir($estado, $agora));
+    }
+
     public function test_listas_de_linha_e_goleiro_sao_independentes(): void
     {
         $agora = new DateTimeImmutable('2026-01-07 10:00');
