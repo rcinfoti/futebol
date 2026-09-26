@@ -35,13 +35,24 @@ final class RepositorioCicloRodadaPdo
             "INSERT INTO rodadas (pelada_id, data_jogo, status, abre_em, vira_regra_em, prazo_multa_em)
              VALUES (?, ?, 'aberta', ?, ?, ?)"
         );
-        $ins->execute([
-            $peladaId,
-            $dataJogo,
-            $datas->abreEm->format('Y-m-d H:i:s'),
-            $datas->viraRegraEm->format('Y-m-d H:i:s'),
-            $datas->prazoMultaEm->format('Y-m-d H:i:s'),
-        ]);
+        try {
+            $ins->execute([
+                $peladaId,
+                $dataJogo,
+                $datas->abreEm->format('Y-m-d H:i:s'),
+                $datas->viraRegraEm->format('Y-m-d H:i:s'),
+                $datas->prazoMultaEm->format('Y-m-d H:i:s'),
+            ]);
+        } catch (\PDOException $e) {
+            // Corrida com outra execução do cron: o UNIQUE(pelada_id, data_jogo)
+            // barrou o segundo INSERT. Recupera o id já criado em vez de propagar.
+            $sel->execute([$peladaId, $dataJogo]);
+            $jaCriado = $sel->fetchColumn();
+            if ($jaCriado !== false) {
+                return (int) $jaCriado;
+            }
+            throw $e;
+        }
 
         return (int) $this->pdo->lastInsertId();
     }

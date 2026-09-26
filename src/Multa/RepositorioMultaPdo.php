@@ -33,15 +33,15 @@ final class RepositorioMultaPdo
             $busca->execute([$multaId]);
             $m = $busca->fetch(PDO::FETCH_ASSOC);
 
-            // Reduz o saldo pendente sem deixar negativo (clamp em PHP: GREATEST não
-            // existe no SQLite e MAX(2 args) é agregação no MySQL).
-            $saldoStmt = $this->pdo->prepare('SELECT saldo_pendente FROM jogadores WHERE id = ?');
-            $saldoStmt->execute([(int) $m['jogador_id']]);
-            $saldoAtual = (float) $saldoStmt->fetchColumn();
-            $novo = max(0.0, $saldoAtual - (float) $m['valor']);
-
-            $this->pdo->prepare('UPDATE jogadores SET saldo_pendente = ? WHERE id = ?')
-                ->execute([$novo, (int) $m['jogador_id']]);
+            // Reduz o saldo pendente de forma atômica e sem deixar negativo. O CASE
+            // (portável MySQL/SQLite) faz a subtração e o clamp na própria escrita,
+            // como o `saldo_pendente = saldo_pendente + ?` de aplicarMulta — assim
+            // dois quitar concorrentes do mesmo jogador não sobrescrevem um ao outro.
+            $this->pdo->prepare(
+                'UPDATE jogadores
+                    SET saldo_pendente = CASE WHEN saldo_pendente < ? THEN 0 ELSE saldo_pendente - ? END
+                  WHERE id = ?'
+            )->execute([(float) $m['valor'], (float) $m['valor'], (int) $m['jogador_id']]);
 
             $this->pdo->commit();
         } catch (\Throwable $e) {

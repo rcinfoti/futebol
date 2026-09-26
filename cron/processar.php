@@ -7,6 +7,10 @@ declare(strict_types=1);
 
 require __DIR__ . '/../vendor/autoload.php';
 
+// Fixa o fuso para que abre_em/prazo_multa_em disparem no horário local da pelada,
+// independentemente do fuso padrão do servidor cPanel.
+date_default_timezone_set('America/Sao_Paulo');
+
 use RcInfoti\Pelada\Email\EnviadorEmailMail;
 use RcInfoti\Pelada\Infra\Database;
 use RcInfoti\Pelada\Multa\NotificadorMulta;
@@ -32,5 +36,10 @@ $ciclo = new CicloRodada(
 
 $peladas = $pdo->query('SELECT * FROM peladas WHERE ativa = 1')->fetchAll(PDO::FETCH_ASSOC);
 foreach ($peladas as $pelada) {
-    $ciclo->executar((int) $pelada['id'], AgendaPelada::deArray($pelada), $agora);
+    // Isola cada pelada: uma falha (agenda inválida, corrida) não pode abortar as demais.
+    try {
+        $ciclo->executar((int) $pelada['id'], AgendaPelada::deArray($pelada), $agora);
+    } catch (\Throwable $e) {
+        error_log(sprintf('[cron pelada %s] %s', $pelada['id'] ?? '?', $e->getMessage()));
+    }
 }
