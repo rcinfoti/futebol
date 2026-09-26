@@ -2,7 +2,7 @@
 
 - **Data:** 2026-09-26
 - **Autor:** Rogério Chagas (rogerschagas@gmail.com)
-- **Status:** Em revisão
+- **Status:** Aprovada — pronta para planejamento de implementação
 - **Destino de deploy:** cPanel em `www.rcinfoti.com.br/futebol`
 - **Local de desenvolvimento:** `~/Projetos/futebol` (fora do Google Drive)
 
@@ -63,7 +63,12 @@ vinculado (relação N:N entre organizadores e peladas). O super admin vê todas
 - **Goleiro:** **não paga** os R$ 15,00. Paga **apenas** os R$ 5,00 (festa).
 - **Festa (resenha):** qualquer jogador pode **quitar a temporada inteira de uma
   vez por R$ 220,00** OU pagar **R$ 5,00 por semana**. (R$ 220 = valor anual da
-  festa, configurável por pelada.)
+  festa, **configurável por pelada** — é um valor fixo, não precisa ser igual a
+  nº de semanas × R$ 5.)
+- **Temporada da festa:** vai de **janeiro até o fim de novembro** (dezembro
+  fora). O ano de quitação (`festa_quitada_ano`) segue esse período. Datas de
+  início/fim da temporada são **configuráveis por pelada** (default: 01/jan a
+  30/nov).
 - Todos os valores (15 / 5 / 220 / limites) são **configuráveis por pelada**.
 - **Formas de pagamento:** Pix (com registro/anexo de comprovante) ou dinheiro.
   Registro é **manual** pelo organizador ou marcado pelo jogador para validação.
@@ -112,12 +117,13 @@ Todas as tabelas de domínio têm `pelada_id` para isolamento multi-pelada
   `abre_dia`/`abre_hora`, `vira_regra_dia`/`vira_regra_hora`,
   `prazo_multa_dia`/`prazo_multa_hora`, `limite_linha` (20), `limite_goleiro`
   (4), `valor_futebol` (15.00), `valor_festa_semana` (5.00),
-  `valor_festa_ano` (220.00), `ativa`, timestamps.
+  `valor_festa_ano` (220.00), `festa_inicio` (default 01/jan),
+  `festa_fim` (default 30/nov), `ativa`, timestamps.
 - **`usuarios`**: `id`, `nome`, `email`, `senha_hash`, `papel`
   (super_admin | organizador), timestamps.
 - **`pelada_organizadores`**: `pelada_id`, `usuario_id` (vínculo N:N).
 - **`jogadores`**: `id`, `pelada_id`, `nome`, `email`, `telefone`, `tipo`
-  (linha | goleiro), `senha_hash` (ou PIN), `saldo_pendente` (decimal),
+  (linha | goleiro), `pin_hash` (PIN numérico, redefinível), `saldo_pendente` (decimal),
   `festa_quitada_ano` (bool/ano), `ativo`, timestamps.
 - **`rodadas`**: `id`, `pelada_id`, `data_jogo`, `status`
   (aberta | fechada | encerrada), `abre_em`, `vira_regra_em`, `prazo_multa_em`
@@ -263,9 +269,12 @@ funcionamento básico offline (leitura em cache).
 
 ---
 
-## 11. Decisões em aberto / a confirmar na implementação
+## 11. Decisões resolvidas (2026-09-26)
 
-- Duração da temporada (nº de semanas) — relevante para o valor R$ 220 e
-  relatórios anuais. Assumido ~44 semanas (220/5); confirmar.
-- PIN numérico vs. senha para o jogador — assumido senha/PIN simples redefinível.
-- Guardar comprovantes como arquivo no servidor (assumido) vs. só anotação.
+- **Temporada da festa:** de **janeiro a fim de novembro** (dezembro fora); datas
+  configuráveis por pelada (default 01/jan–30/nov). R$ 220 é valor anual fixo
+  configurável, desacoplado do nº de semanas.
+- **Acesso do jogador:** **PIN numérico** (redefinível pelo organizador) — teclado
+  numérico no celular, mais simples para quem tem pouca familiaridade com tech.
+- **Comprovantes de pagamento:** **guardados como arquivo no servidor** (fora da
+  raiz web ou com nome não adivinhável; tipo/tamanho validados).
