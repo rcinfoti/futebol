@@ -18,6 +18,29 @@ final class ServicoRegrasRodada
             }
         }
 
+        foreach ($this->multas($estado) as $acao) {
+            $acoes[] = $acao;
+        }
+
+        return $acoes;
+    }
+
+    /** @return list<AcaoAplicarMulta> */
+    private function multas(EstadoRodada $estado): array
+    {
+        $acoes = [];
+        foreach ($estado->inscricoes as $inscricao) {
+            if ($inscricao->status !== StatusInscricao::Desistiu) {
+                continue;
+            }
+            if ($inscricao->desistiuEm === null || $inscricao->multaAplicada) {
+                continue;
+            }
+            if ($inscricao->desistiuEm >= $estado->prazoMultaEm) {
+                $acoes[] = new AcaoAplicarMulta($inscricao->jogadorId);
+            }
+        }
+
         return $acoes;
     }
 

@@ -6,6 +6,7 @@ namespace RcInfoti\Pelada\Tests\Rodada;
 
 use DateTimeImmutable;
 use PHPUnit\Framework\TestCase;
+use RcInfoti\Pelada\Rodada\AcaoAplicarMulta;
 use RcInfoti\Pelada\Rodada\AcaoPromover;
 use RcInfoti\Pelada\Rodada\EstadoRodada;
 use RcInfoti\Pelada\Rodada\Inscricao;
@@ -173,5 +174,92 @@ final class ServicoRegrasRodadaTest extends TestCase
             [new AcaoPromover(1), new AcaoPromover(2)],
             $this->servico()->decidir($estado, $agora),
         );
+    }
+
+    public function test_aplica_multa_para_desistencia_apos_prazo(): void
+    {
+        $agora = new DateTimeImmutable('2026-01-08 18:00');
+        $estado = new EstadoRodada(
+            new DateTimeImmutable('2026-01-07 12:00'),
+            prazoMultaEm: new DateTimeImmutable('2026-01-08 16:00'),
+            limiteLinha: 20,
+            limiteGoleiro: 4,
+            inscricoes: [
+                new Inscricao(
+                    1,
+                    Tipo::Linha,
+                    StatusInscricao::Desistiu,
+                    1,
+                    desistiuEm: new DateTimeImmutable('2026-01-08 17:00'),
+                ),
+            ],
+        );
+
+        $this->assertEquals([new AcaoAplicarMulta(1)], $this->servico()->decidir($estado, $agora));
+    }
+
+    public function test_nao_aplica_multa_para_desistencia_antes_do_prazo(): void
+    {
+        $agora = new DateTimeImmutable('2026-01-08 12:00');
+        $estado = new EstadoRodada(
+            new DateTimeImmutable('2026-01-07 12:00'),
+            new DateTimeImmutable('2026-01-08 16:00'),
+            20,
+            4,
+            [
+                new Inscricao(
+                    1,
+                    Tipo::Linha,
+                    StatusInscricao::Desistiu,
+                    1,
+                    desistiuEm: new DateTimeImmutable('2026-01-08 10:00'),
+                ),
+            ],
+        );
+
+        $this->assertSame([], $this->servico()->decidir($estado, $agora));
+    }
+
+    public function test_multa_no_instante_exato_do_prazo(): void
+    {
+        $prazo = new DateTimeImmutable('2026-01-08 16:00');
+        $estado = new EstadoRodada(
+            new DateTimeImmutable('2026-01-07 12:00'),
+            $prazo,
+            20,
+            4,
+            [
+                new Inscricao(1, Tipo::Linha, StatusInscricao::Desistiu, 1, desistiuEm: $prazo),
+            ],
+        );
+
+        // desistiuEm == prazoMultaEm -> multa (limite inclusivo).
+        $this->assertEquals(
+            [new AcaoAplicarMulta(1)],
+            $this->servico()->decidir($estado, new DateTimeImmutable('2026-01-08 16:30')),
+        );
+    }
+
+    public function test_nao_reaplica_multa_ja_aplicada(): void
+    {
+        $agora = new DateTimeImmutable('2026-01-08 18:00');
+        $estado = new EstadoRodada(
+            new DateTimeImmutable('2026-01-07 12:00'),
+            new DateTimeImmutable('2026-01-08 16:00'),
+            20,
+            4,
+            [
+                new Inscricao(
+                    1,
+                    Tipo::Linha,
+                    StatusInscricao::Desistiu,
+                    1,
+                    desistiuEm: new DateTimeImmutable('2026-01-08 17:00'),
+                    multaAplicada: true,
+                ),
+            ],
+        );
+
+        $this->assertSame([], $this->servico()->decidir($estado, $agora));
     }
 }
