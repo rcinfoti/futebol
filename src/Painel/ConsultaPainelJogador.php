@@ -15,6 +15,22 @@ final class ConsultaPainelJogador
     {
     }
 
+    /** @return list<array{id:int,nome:string}> jogadores ativos para o seletor de login */
+    public function jogadoresParaLogin(): array
+    {
+        $rows = $this->pdo->query(
+            "SELECT j.id, j.nome FROM jogadores j
+             JOIN peladas p ON p.id = j.pelada_id
+             WHERE j.ativo = 1 AND p.ativa = 1
+             ORDER BY j.nome"
+        )->fetchAll(PDO::FETCH_ASSOC);
+
+        return array_map(
+            static fn (array $r): array => ['id' => (int) $r['id'], 'nome' => (string) $r['nome']],
+            $rows,
+        );
+    }
+
     public function peladaId(int $jogadorId): int
     {
         $stmt = $this->pdo->prepare('SELECT pelada_id FROM jogadores WHERE id = ?');

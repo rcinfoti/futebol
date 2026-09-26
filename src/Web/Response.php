@@ -23,4 +23,13 @@ final class Response
     {
         return new self($status, '', ['Location' => $para]);
     }
+
+    public function enviar(): void
+    {
+        http_response_code($this->status);
+        foreach ($this->cabecalhos as $nome => $valor) {
+            header($nome . ': ' . $valor);
+        }
+        echo $this->corpo;
+    }
 }

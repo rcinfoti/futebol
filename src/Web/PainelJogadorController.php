@@ -12,7 +12,6 @@ use RcInfoti\Pelada\Financeiro\FormaPagamento;
 use RcInfoti\Pelada\Financeiro\Pagamento;
 use RcInfoti\Pelada\Financeiro\RepositorioPagamentoPdo;
 use RcInfoti\Pelada\Painel\ConsultaPainelJogador;
-use RcInfoti\Pelada\Painel\PainelJogador;
 use RcInfoti\Pelada\Presenca\ServicoPresenca;
 
 final class PainelJogadorController
@@ -46,6 +45,21 @@ final class PainelJogadorController
         return Response::redirecionar('/');
     }
 
+    public function entrar(Request $req): Response
+    {
+        if ($this->jogadorLogado() !== null) {
+            return Response::redirecionar('/');
+        }
+
+        $conteudo = $this->vista()->render('entrar', [
+            'jogadores' => $this->consulta->jogadoresParaLogin(),
+            'csrf' => $this->csrf->token(),
+            'erro' => $req->entrada('erro') !== null,
+        ]);
+
+        return Response::html($this->vista()->render('layout', ['titulo' => 'Entrar', 'conteudo' => $conteudo]));
+    }
+
     public function painel(Request $req): Response
     {
         $jogadorId = $this->jogadorLogado();
@@ -54,8 +68,9 @@ final class PainelJogadorController
         }
 
         $painel = $this->consulta->montar($jogadorId, new DateTimeImmutable('now'));
+        $conteudo = $this->vista()->render('painel', ['p' => $painel, 'csrf' => $this->csrf->token()]);
 
-        return Response::html($this->montarHtml($painel));
+        return Response::html($this->vista()->render('layout', ['titulo' => 'Sua pelada', 'conteudo' => $conteudo]));
     }
 
     public function confirmar(Request $req): Response
@@ -144,10 +159,8 @@ final class PainelJogadorController
         return is_int($id) ? $id : null;
     }
 
-    private function montarHtml(PainelJogador $p): string
+    private function vista(): Vista
     {
-        // Placeholder mínimo para os testes de status; a view real (Vista) chega na Task 8.
-        return '<!doctype html><title>Pelada</title><main>'
-            . htmlspecialchars($p->nome) . ' — ' . htmlspecialchars($p->situacao) . '</main>';
+        return new Vista(__DIR__ . '/vistas');
     }
 }
