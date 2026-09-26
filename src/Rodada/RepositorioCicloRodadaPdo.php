@@ -45,4 +45,15 @@ final class RepositorioCicloRodadaPdo
 
         return (int) $this->pdo->lastInsertId();
     }
+
+    public function fecharRodadasVencidas(int $peladaId, DateTimeImmutable $agora): int
+    {
+        $stmt = $this->pdo->prepare(
+            "UPDATE rodadas SET status = 'fechada'
+             WHERE pelada_id = ? AND status = 'aberta' AND data_jogo < ?"
+        );
+        $stmt->execute([$peladaId, $agora->format('Y-m-d')]);
+
+        return $stmt->rowCount();
+    }
 }

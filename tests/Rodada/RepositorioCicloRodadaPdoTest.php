@@ -68,4 +68,37 @@ final class RepositorioCicloRodadaPdoTest extends TestCase
         $this->assertSame($id1, $id2);
         $this->assertSame(1, (int) $this->pdo->query('SELECT COUNT(*) FROM rodadas')->fetchColumn());
     }
+
+    private function inserirRodada(string $dataJogo, string $status): int
+    {
+        $this->pdo->prepare(
+            "INSERT INTO rodadas (pelada_id, data_jogo, status, vira_regra_em, prazo_multa_em)
+             VALUES (1, ?, ?, ?, ?)"
+        )->execute([$dataJogo, $status, $dataJogo . ' 12:00:00', $dataJogo . ' 16:00:00']);
+
+        return (int) $this->pdo->lastInsertId();
+    }
+
+    public function test_fecha_rodada_com_jogo_no_passado(): void
+    {
+        $antiga = $this->inserirRodada('2026-01-01', 'aberta');
+
+        $fechadas = $this->repo()->fecharRodadasVencidas(1, new DateTimeImmutable('2026-01-05 09:00:00'));
+
+        $this->assertSame(1, $fechadas);
+        $status = $this->pdo->query('SELECT status FROM rodadas WHERE id = ' . $antiga)->fetchColumn();
+        $this->assertSame('fechada', $status);
+    }
+
+    public function test_nao_fecha_rodada_de_hoje_nem_futura(): void
+    {
+        $hoje = $this->inserirRodada('2026-01-05', 'aberta');
+        $futura = $this->inserirRodada('2026-01-12', 'aberta');
+
+        $fechadas = $this->repo()->fecharRodadasVencidas(1, new DateTimeImmutable('2026-01-05 09:00:00'));
+
+        $this->assertSame(0, $fechadas);
+        $this->assertSame('aberta', $this->pdo->query('SELECT status FROM rodadas WHERE id = ' . $hoje)->fetchColumn());
+        $this->assertSame('aberta', $this->pdo->query('SELECT status FROM rodadas WHERE id = ' . $futura)->fetchColumn());
+    }
 }
